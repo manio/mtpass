@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #define PWLENGTH     17
-#define START_OFFSET 140
+#define START_OFFSET 0x8c
 
 int main(int argc, char **argv)
 {
