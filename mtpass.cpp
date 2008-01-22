@@ -1,24 +1,27 @@
 /*
-    mtpass.c
-    This program simply decode admin password from user file
-    i don't have time to figure out the user.dat structure so
-    this program only show the admin password (offset 140).
-    If you know where the other user password start you can
-    change it to fit your needs :)
+    mtpass.cpp
+    This tool decodes user passwords from MikroTik RouterOS user.dat file
 
     license: GPL v2.0
     (c) by Mariusz "Manio" Bialonczyk; manio@skyboo.net
-    v0.1 [2007-01-03]: initial release
+    v0.1 [2008-01-03]: initial release
+    v0.2 [2008-01-23]: rewritten in C++
+                       ability to show other users besides admin
+                       added decrypt keys and key prediction
 */
 
-#include <list>
 #include <iostream>
+#include <list>
 #include <fcntl.h>
 
 using namespace std;
 
-const int KeySize = 16;
-const char key[][KeySize] = {
+const char* szVerInfo = "mtpass v0.2 - MikroTik RouterOS password recovery tool, (c) 2008 by Manio";
+const char* szFormatHdr = "%-3s | %-15s | %-18s | %-14s | %-35s";
+const char* szFormatData = "%-3d  | %-15s | %-18s | %-14s | %-35s";
+const int iFormatLineLength = 92;
+const int KeyLength = 16;
+const char key[][KeyLength] = {
     {0x02, 0x6d, 0xb5, 0x70, 0x66, 0xa6, 0x3d, 0x2a, 0xb7, 0xcd, 0xec, 0x68, 0xe2, 0x6e, 0x44, 0x0e},
     {0x48, 0xbf, 0xde, 0x06, 0x49, 0x5a, 0x0e, 0x2d, 0x09, 0xd5, 0xfb, 0x27, 0xb1, 0x44, 0xec, 0x93},
     {0xe8, 0x61, 0xb0, 0xa8, 0x2f, 0xbb, 0x68, 0x29, 0xe2, 0x53, 0xce, 0xeb, 0x1e, 0x3e, 0x61, 0x5a},
@@ -36,33 +39,31 @@ class cUserRecord
   private:
     bool bDisabled;
     int iRecNumber;
-    char szCryptedPass[KeySize];
+    char szCryptedPass[KeyLength];
     char* szUserName;
     char* szComment;
     int iPrefKey;
   public:
     cUserRecord()
     {
-	cout << "const" << endl;
 	szUserName=NULL;
 	szComment=NULL;
 	bDisabled=false;
 	iRecNumber=-1;
-	bzero(szCryptedPass,KeySize);
+	bzero(szCryptedPass, KeyLength);
     }
     cUserRecord(const cUserRecord &t)
     {
-	cout << "kopiujacy"  << endl;
 	bDisabled=t.bDisabled;
 	iRecNumber=t.iRecNumber;
-	memcpy(szCryptedPass, t.szCryptedPass, KeySize);
+	memcpy(szCryptedPass, t.szCryptedPass, KeyLength);
 
 	if (t.szUserName==NULL)
 	    szUserName=NULL;
 	else
 	{
     	    szUserName=new char[strlen(t.szUserName)+1];
-	    strcpy(szUserName,t.szUserName);
+	    strcpy(szUserName, t.szUserName);
 	}
 
 	if (t.szComment==NULL)
@@ -70,18 +71,17 @@ class cUserRecord
 	else
 	{
 	    szComment=new char[strlen(t.szComment)+1];
-	    strcpy(szComment,t.szComment);
+	    strcpy(szComment, t.szComment);
 	}
     }
     ~cUserRecord()
     {
-	cout << "destructing" << endl;
 	if (szUserName) delete []szUserName;
 	if (szComment) delete []szComment;
     }
     void SetCryptedPass(char* pPass)
     {
-	memcpy(szCryptedPass,pPass,KeySize);
+	memcpy(szCryptedPass, pPass, KeyLength);
     }
     void SetDisableFlag(bool bFlag)
     {
@@ -95,13 +95,13 @@ class cUserRecord
     {
 	if (szUserName) delete []szUserName;
 	szUserName=new char[strlen(NewUserName)+1];
-	strcpy(szUserName,NewUserName);
+	strcpy(szUserName, NewUserName);
     }
     void SetComment(char* NewComment)
     {
 	if (szComment) delete []szComment;
 	szComment=new char[strlen(NewComment)+1];
-	strcpy(szComment,NewComment);
+	strcpy(szComment, NewComment);
     }
     void compute(int keys)
     {
@@ -116,7 +116,7 @@ class cUserRecord
 	for (int i=0; i<keys; i++)
 	{
 	    pts=0;
-	    for (int j=0; j<KeySize; j++)
+	    for (int j=0; j<KeyLength; j++)
 	    {
 		c=szCryptedPass[j]^key[i][j];
 		if (c==0x00 || (c>=32 && c<=126))
@@ -129,21 +129,13 @@ class cUserRecord
 	    }
 	}
     }
-    void show(int in)
+    void show()
     {
-	cout << iRecNumber << " " << flush;
-	if (szUserName)
-	    cout << szUserName << "\t" << flush;
-	if (bDisabled)
-	    cout << "[DISABLED] " << flush;
-	if (szComment)
-	    cout << szComment << "\t" << flush;
-//	for (int i=0; i<KeySize; i++)
-//	    printf("%.2X",(unsigned char)szCryptedPass[i]);
-	cout << " pass: " << flush;
-	for (int i=0; i<KeySize; i++)
-	    fprintf(stdout, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
-	cout << endl;
+	char szPass[17]={0};
+	for (int i=0; i<KeyLength; i++)
+	    sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
+	fprintf(stdout, szFormatData, iRecNumber, szUserName, szPass, bDisabled?"USER DISABLED":"", szComment==NULL?"":szComment);
+	fprintf(stdout, "\n");
     }
 };
 
@@ -151,16 +143,15 @@ int main(int argc, char **argv)
 {
     char *buff;
     int fd;
-    int a;
     list<cUserRecord> tabUser;
 
-    int i, j, k, pass;
-    int bytes, iKeys;
+    int i, bytes, iKeys;
 
+    fprintf(stdout, "%s\n\n", szVerInfo);
     if (argc <= 1)
     {
-	fprintf(stderr, "usage: %s input_file\n", argv[0]);
-	fprintf(stderr, "input_file: RouterOS userdata file from /nova/store/user.dat\n");
+	fprintf(stdout, "usage: %s input_file\n", argv[0]);
+	fprintf(stdout, "input_file: RouterOS userdata file from /nova/store/user.dat\n");
 	return -1;
     }
 
@@ -168,7 +159,7 @@ int main(int argc, char **argv)
     if (fd < 0)
     {
 	fprintf(stderr, "Error: could not open file: %s\n", argv[1]);
-	return -1;
+	return -2;
     }
     bytes = lseek(fd, 0, SEEK_END);
     fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1], bytes);
@@ -176,26 +167,24 @@ int main(int argc, char **argv)
     if (buff==NULL)
     {
 	fprintf(stderr, "Error: cannot allocate buffer\n");
-	return -1;
+	return -3;
     }
 
     cUserRecord *ptr=NULL;
     lseek(fd, 0, SEEK_SET);
     if (read(fd, buff, bytes) == bytes)
     {
-	pass=1;
 	for (i=0; i<bytes; i++)
 	{
 	    //searching for StartOfRecord
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
 		ptr=new cUserRecord;
-		printf("Found user record at offset 0x%.5x\n",i);
+		//fprintf(stdout, "Found user record at offset 0x%.5x\n",i);
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
 		ptr->SetDisableFlag(bool(buff[i]));
-		cout << (int)buff[i] << endl;
 
 		i+=15;
 		ptr->SetRecNumber(buff[i]);
@@ -208,24 +197,21 @@ int main(int argc, char **argv)
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
-		    cout << tmp << endl;
 		    ptr->SetComment(tmp);
 		    delete tmp;
 		    i+=buff[i];
 		}
 		//searching for StartOfPassword
 		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && (buff[i+4]==0x10))) i++;
-		//(buff[i+1]==0x00) && (buff[i+2]==0x00) && 
 		i+=5;
 
 		//copying pass
 		ptr->SetCryptedPass(&buff[i]);
 
-		i+=buff[KeySize];
+		i+=buff[KeyLength];
 
 		//searching for StartOfUsername
 		while (!((buff[i]==0x01) && (buff[i+3]==0x21))) i++;
-		//(buff[i+1]==0x00) && (buff[i+2]==0x00) && 
 		i+=4;
 		if (buff[i]!=0x00)
 		{
@@ -252,11 +238,11 @@ int main(int argc, char **argv)
     else
     {
 	fprintf(stderr, "Error: can't read file\n");
-        return -2;
+        return -4;
     }
     close(fd);
-    
-    iKeys=sizeof(key)/KeySize;
+
+    iKeys=sizeof(key)/KeyLength;
 
     //show the results
     list<cUserRecord>::iterator iter1;
@@ -264,11 +250,20 @@ int main(int argc, char **argv)
     iter1 = tabUser.begin();
     iter2 = tabUser.end();
 
-    for (int a=1; iter1!=iter2; ++iter1,a++)
+    //print header
+    fprintf(stdout, "\n");
+    fprintf(stdout, szFormatHdr, "Rec#", "Username", "Password", "Disable flag", "User comment");
+    fprintf(stdout, "\n");
+    for (int i=0; i<iFormatLineLength; i++) fprintf(stdout, "-");
+    fprintf(stdout, "\n");
+
+    //print data
+    for (; iter1!=iter2; ++iter1)
     {
 	iter1->compute(iKeys);
-	iter1->show(a);
+	iter1->show();
     }
 
+    fprintf(stdout, "\n");
     return 0;
 }
