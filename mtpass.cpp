@@ -32,10 +32,21 @@ const char key[][KeyLength] = {
     {0x3f, 0xea, 0xb5, 0x12, 0x11, 0xab, 0x30, 0x17, 0xbe, 0x71, 0x86, 0xae, 0x65, 0xde, 0x96, 0x60},
     {0xa2, 0xdb, 0xb1, 0x5d, 0x27, 0x72, 0x44, 0x6f, 0xa9, 0x1c, 0xa2, 0x38, 0xb0, 0xfc, 0xc2, 0x29},
     {0x26, 0xa0, 0x52, 0x14, 0x80, 0x0e, 0xa2, 0x6b, 0xbd, 0x5f, 0x7c, 0x53, 0x6f, 0xde, 0x08, 0x71},
+
+/* mustafa? */
 {0x96, 0x04, 0x20, 0xda, 0x4e, 0x57, 0xe2, 0x65, 0x6b, 0x49, 0x83, 0x2c, 0x27, 0xaf, 0xf2, 0xa2},
 {0x00, 0x98, 0xa9, 0x10, 0xdb, 0x20, 0x57, 0x61, 0x4e, 0x12, 0xff, 0xea, 0xfe, 0x96, 0xd1, 0xb0},
 {0xc8, 0x61, 0x54, 0xb1, 0x3b, 0x25, 0xd3, 0x4b, 0x6b, 0x49, 0x83, 0x2c, 0x27, 0xaf, 0xf2, 0xa2},
-{0x5f, 0x1f, 0xd7, 0x65, 0x27, 0xac, 0x71, 0xbc, 0xb0, 0xcc, 0xe0, 0xb5, 0x51, 0x07, 0xee, 0x8b}
+{0x5f, 0x1f, 0xd7, 0x65, 0x27, 0xac, 0x71, 0xbc, 0xb0, 0xcc, 0xe0, 0xb5, 0x51, 0x07, 0xee, 0x8b},
+
+/* vlad */
+{0xfa, 0xb8, 0xa8, 0x11, 0x49, 0xe4, 0xa6, 0x3c, 0x09, 0xe7, 0x57, 0x9c, 0x0b, 0x28, 0x52, 0x3e},
+{0x74, 0xab, 0x67, 0xb3, 0xc6, 0x1e, 0x56, 0xc2, 0x99, 0x22, 0xf8, 0x33, 0xe1, 0x2e, 0x74, 0xcd},
+{0xd8, 0x6d, 0x8b, 0xa1, 0xaf, 0x52, 0x12, 0xed, 0xe1, 0xb8, 0xe3, 0x47, 0xfa, 0xd2, 0x18, 0xca}
+
+/* wsgtrsys1 */
+/*{0x43, 0x00, 0xd8, 0xea, 0xcf, 0x07, 0xa2, 0xc1, 0x1b, 0x0d, 0x91, 0x20, 0x37, 0x2c, 0x22, 0x54},
+{0xdd, 0xfa, 0x62, 0xb8, 0x84, 0x5c, 0xf7, 0xab, 0x18, 0x9b, 0x72, 0xf3, 0x63, 0x05, 0x08, 0x2c}*/
 };
 
 class cUserRecord
@@ -114,17 +125,25 @@ class cUserRecord
 	    and this function is simply trying to predict the correct key based on number of printable
 	    characters in output
 	*/
-	int maxpts, pts;
+	int maxpts, pts, k;
 	maxpts=0;
 	char c;
 	for (int i=0; i<keys; i++)
 	{
 	    pts=0;
+	    k=0;
 	    for (int j=0; j<KeyLength; j++)
 	    {
 		c=szCryptedPass[j]^key[i][j];
 		if (c==0x00 || (c>=32 && c<=126))
 		    pts++;
+		//checking if password if set
+		if (szCryptedPass[j]==0x00) k++;
+	    }
+	    if (k==KeyLength)
+	    {
+		iPrefKey=-1;
+		break;
 	    }
 	    if (pts>maxpts)
 	    {
@@ -133,12 +152,18 @@ class cUserRecord
 	    }
 	}
     }
-    void show()
+    void show(int iNo)
     {
 	char szPass[17]={0};
-	for (int i=0; i<KeyLength; i++)
-	    sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
-	fprintf(stdout, szFormatData, iRecNumber, szUserName, szPass, bDisabled?"USER DISABLED":"", szComment==NULL?"":szComment);
+	if (iPrefKey>=0)	//checking for empty pass
+	{
+	    for (int i=0; i<KeyLength; i++)
+		sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
+	}
+	else
+	    sprintf(szPass, "<EMPTY PASSWORD>");
+	//fprintf(stdout, szFormatData, iRecNumber, szUserName, szPass, bDisabled?"USER DISABLED":"", szComment==NULL?"":szComment);
+	fprintf(stdout, szFormatData, iNo, szUserName, szPass, bDisabled?"USER DISABLED":"", szComment==NULL?"":szComment);
 	fprintf(stdout, "\n");
     }
 };
@@ -184,17 +209,18 @@ int main(int argc, char **argv)
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
 		ptr=new cUserRecord;
-		fprintf(stdout, "Found user record at offset 0x%.5x\n",i);
+		//fprintf(stdout, "Found user record at offset 0x%.5x\n",i);
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
 		ptr->SetDisableFlag(bool(buff[i]));
+		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
-		while (!((buff[i]==0x01) && (buff[i+1]==0x00) && ((unsigned char)buff[i+2]==0xfe) && (buff[i+3]==0x09))) i++;
+		while (!((buff[i]==0x01) && (buff[i+1]==0x00) && (buff[i+3]==0x09))) i++;
 		i+=4;
 
+		//cout << (int)buff[i] << endl;
 		ptr->SetRecNumber(buff[i]);
-		cout << (int)buff[i] << endl;
 
 		i+=18;
 		//is there a comment?
@@ -205,17 +231,22 @@ int main(int argc, char **argv)
 		    //terminating the string
 		    tmp[buff[i]]=0;
 		    ptr->SetComment(tmp);
+		//cout <<tmp<<endl;
 		    delete tmp;
 		    i+=buff[i];
 		}
+
 		//searching for StartOfPassword
-		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && (buff[i+4]==0x10))) i++;
+		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) )) i++;
 		i+=5;
 
-		//copying pass
-		ptr->SetCryptedPass(&buff[i]);
+		if (buff[i-1]!=0x00)
+		{
+		    //copying pass
+		    ptr->SetCryptedPass(&buff[i]);
 
-		i+=buff[KeyLength];
+		    i+=buff[KeyLength];
+		}
 
 		//searching for StartOfUsername
 		while (!((buff[i]==0x01) && (buff[i+3]==0x21))) i++;
@@ -226,6 +257,7 @@ int main(int argc, char **argv)
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
+		//cout <<tmp<<endl;
 		    ptr->SetUserName(tmp);
 		    delete tmp;
 		    i+=buff[i];
@@ -265,10 +297,10 @@ int main(int argc, char **argv)
     fprintf(stdout, "\n");
 
     //print data
-    for (; iter1!=iter2; ++iter1)
+    for (int i=1; iter1!=iter2; ++iter1, ++i)
     {
 	iter1->compute(iKeys);
-	iter1->show();
+	iter1->show(i);
     }
 
     fprintf(stdout, "\n");
