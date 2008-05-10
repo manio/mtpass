@@ -222,7 +222,7 @@ int main(int argc, char **argv)
 		ptr->SetDisableFlag(bool(buff[i]));
 		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
-		while (!((buff[i]==0x01) && (buff[i+1]==0x00) && (buff[i+3]==0x09))) i++;
+		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09))) i++;
 		i+=4;
 
 		//cout << (int)buff[i] << endl;
