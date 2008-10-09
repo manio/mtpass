@@ -13,14 +13,17 @@
 #include <iostream>
 #include <list>
 #include <fcntl.h>
+#include <stdarg.h>
+#include <string.h>
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.2 - MikroTik RouterOS password recovery tool, (c) 2008 by Manio";
+const char* szVerInfo = "mtpass v0.2b - MikroTik RouterOS password recovery tool, (c) 2008 by Manio";
 const char* szFormatHdr = "%-6s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-3d / %-2d    | %-15s | %-18s | %-14s | %-35s";
 const int iFormatLineLength = 92;
 const int KeyLength = 16;
+int iDebug = 0;
 const char key[][KeyLength] = {
     {0x02, 0x6d, 0xb5, 0x70, 0x66, 0xa6, 0x3d, 0x2a, 0xb7, 0xcd, 0xec, 0x68, 0xe2, 0x6e, 0x44, 0x0e},
     {0x48, 0xbf, 0xde, 0x06, 0x49, 0x5a, 0x0e, 0x2d, 0x09, 0xd5, 0xfb, 0x27, 0xb1, 0x44, 0xec, 0x93},
@@ -52,8 +55,27 @@ const char key[][KeyLength] = {
 {0xc8, 0x96, 0x9b, 0x30, 0x3a, 0xf4, 0xcc, 0xc6, 0xe4, 0x9f, 0x1c, 0x9a, 0xa2, 0x7e, 0xeb, 0xd7},
 {0x16, 0xd6, 0xb3, 0x62, 0x28, 0x5a, 0x0e, 0x2d, 0x09, 0xd5, 0xfb, 0x27, 0xb1, 0x44, 0xec, 0x93},
 {0x75, 0x18, 0xa4, 0x14, 0xcf, 0x25, 0x84, 0x2f, 0xa6, 0xb0, 0x33, 0x54, 0x7c, 0xe0, 0x12, 0x50},
-{0x36, 0x4f, 0x2b, 0x2e, 0x87, 0x50, 0x88, 0x7a, 0x61, 0x90, 0xdd, 0x0b, 0x57, 0x00, 0x70, 0x0d}
+{0x36, 0x4f, 0x2b, 0x2e, 0x87, 0x50, 0x88, 0x7a, 0x61, 0x90, 0xdd, 0x0b, 0x57, 0x00, 0x70, 0x0d},
+
+// chris
+{0xfc, 0xae, 0xec, 0xe8, 0xe6, 0x08, 0xf1, 0xfb, 0x53, 0x66, 0x47, 0x78, 0x3d, 0x6f, 0xe7, 0x07},
+{0x67, 0xd5, 0x44, 0x6e, 0x71, 0xb0, 0xb9, 0x0a, 0x00, 0x6e, 0x2a, 0x0a, 0x5f, 0x4a, 0x48, 0xdf},
+{0x5b, 0x90, 0x38, 0x1e, 0x3f, 0x31, 0xe1, 0xce, 0x85, 0x01, 0x77, 0xa1, 0x1f, 0x44, 0xeb, 0x56},
+// srecko
+{0x7a, 0xe4, 0x04, 0x90, 0x45, 0x02, 0x01, 0x53, 0x9c, 0xdb, 0x2d, 0xd6, 0x43, 0xe2, 0xee, 0xd9},
+{0x86, 0x89, 0xb3, 0xcc, 0x91, 0x5c, 0xf9, 0xbb, 0x92, 0x55, 0x98, 0x76, 0xe6, 0x5c, 0x38, 0xfc}
 };
+
+void debug(char *fmt, ...)
+{
+    if (iDebug == 0)
+	return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stdout, fmt, ap);
+    va_end(ap);
+}
 
 class cUserRecord
 {
@@ -71,7 +93,9 @@ class cUserRecord
 	szComment=NULL;
 	bDisabled=false;
 	iRecNumber=-1;
-	bzero(szCryptedPass, KeyLength);
+	//bzero(szCryptedPass, KeyLength);
+	for (int i=0;i<KeyLength;i++)
+	  szCryptedPass[i]=0;
     }
     cUserRecord(const cUserRecord &t)
     {
@@ -163,8 +187,16 @@ class cUserRecord
 	char szPass[17]={0};
 	if (iPrefKey>=0)	//checking for empty pass
 	{
-	    for (int i=0; i<KeyLength; i++)
-		sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
+	    int iKeys=sizeof(key)/KeyLength;
+//	    for (int j=0; j<iKeys; j++)
+//	    {
+		for (int i=0; i<KeyLength; i++)
+		{
+		    sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
+		    //sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[j][i]);
+		}
+//		fprintf(stdout, "key = %d, pass=%s\n",j,szPass);
+//	    }
 	}
 	else
 	    sprintf(szPass, "<EMPTY PASSWORD>");
@@ -185,19 +217,22 @@ int main(int argc, char **argv)
     fprintf(stdout, "%s\n\n", szVerInfo);
     if (argc <= 1)
     {
-	fprintf(stdout, "usage: %s input_file\n", argv[0]);
+	fprintf(stdout, "usage: %s [-d] input_file\n", argv[0]);
 	fprintf(stdout, "input_file: RouterOS userdata file from /nova/store/user.dat\n");
 	return -1;
     }
 
-    fd = open(argv[1], O_RDONLY);
+    if (strcmp(argv[1],"-d")==0)
+	iDebug = 1;
+
+    fd = open(argv[1+iDebug], O_RDONLY);
     if (fd < 0)
     {
-	fprintf(stderr, "Error: could not open file: %s\n", argv[1]);
+	fprintf(stderr, "Error: could not open file: %s\n", argv[1+iDebug]);
 	return -2;
     }
     bytes = lseek(fd, 0, SEEK_END);
-    fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1], bytes);
+    fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1+iDebug], bytes);
     buff = new char[bytes];
     if (buff==NULL)
     {
@@ -215,7 +250,7 @@ int main(int argc, char **argv)
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
 		ptr=new cUserRecord;
-		//fprintf(stdout, "Found user record at offset 0x%.5x\n",i);
+		debug("Found user record at offset 0x%.5x\n",i);
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
@@ -224,20 +259,24 @@ int main(int argc, char **argv)
 		//searching for StartOfRecNumber
 		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09))) i++;
 		i+=4;
+		debug("SORn: 0x%X\n", i);
+		//if (i==0x5f0a) break;
+		//if (i==0x1f07f9e) break;
 
 		//cout << (int)buff[i] << endl;
 		ptr->SetRecNumber(buff[i]);
 
-		i+=18;
 		//is there a comment?
-		if (buff[i]!=0x00)
+		i+=18;
+		if (buff[i-5]==0x03 && (buff[i]!=0x00)) //there is comment
 		{
 		    char *tmp=new char[buff[i]+1];
+		    debug("SOC: 0x%X\n", i+1);
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
 		    ptr->SetComment(tmp);
-		//cout <<tmp<<endl;
+		    //cout <<tmp<<endl;
 		    delete tmp;
 		    i+=buff[i];
 		}
@@ -245,6 +284,7 @@ int main(int argc, char **argv)
 		//searching for StartOfPassword
 		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) )) i++;
 		i+=5;
+		debug("SOP: 0x%X\n", i);
 
 		if (buff[i-1]!=0x00)
 		{
@@ -257,13 +297,14 @@ int main(int argc, char **argv)
 		//searching for StartOfUsername
 		while (!((buff[i]==0x01) && (buff[i+3]==0x21))) i++;
 		i+=4;
+		debug("SOU: 0x%X\n", i);
 		if (buff[i]!=0x00)
 		{
 		    char *tmp=new char[buff[i]+1];
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
-		//cout <<tmp<<endl;
+		    //cout <<tmp<<endl;
 		    ptr->SetUserName(tmp);
 		    delete tmp;
 		    i+=buff[i];
