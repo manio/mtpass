@@ -3,7 +3,7 @@
     This tool decodes user passwords from MikroTik RouterOS user.dat file
 
     license: GPL v2.0
-    (c) by Mariusz "Manio" Bialonczyk; manio@skyboo.net
+    (c) by Mariusz 'manio' Bialonczyk; manio@skyboo.net
     v0.1 [2008-01-03]: initial release
     v0.2 [2008-01-23]: rewritten in C++
                        ability to show other users besides admin
@@ -15,10 +15,11 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <string.h>
+#include <openssl/md5.h>
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.2b - MikroTik RouterOS password recovery tool, (c) 2008 by Manio";
+const char* szVerInfo = "mtpass v0.2b - MikroTik RouterOS password recovery tool, (c) 2008 by manio";
 const char* szFormatHdr = "%-6s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-3d / %-2d    | %-15s | %-18s | %-14s | %-35s";
 const int iFormatLineLength = 92;
@@ -184,6 +185,17 @@ class cUserRecord
     }
     void show(int iNo)
     {
+	//MD5_CTX md5_context;
+	char magic_string[]="283i4jfkai3389";	// :)
+	unsigned char key[MD5_DIGEST_LENGTH];
+	char user_magic[512];
+	strcpy(user_magic,szUserName);
+	strcat(user_magic,magic_string);
+	//MD5_Init(&md5_context);
+	MD5((unsigned char*)user_magic, strlen(user_magic), key);
+	//MD5_Final(kkk, &md5_context);
+	//MD5_Final(kkk, &md5_context);
+
 	char szPass[17]={0};
 	if (iPrefKey>=0)	//checking for empty pass
 	{
@@ -192,7 +204,7 @@ class cUserRecord
 //	    {
 		for (int i=0; i<KeyLength; i++)
 		{
-		    sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[iPrefKey][i]);
+		    sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[i]);
 		    //sprintf(szPass+i, "%c", szCryptedPass[i] ^ key[j][i]);
 		}
 //		fprintf(stdout, "key = %d, pass=%s\n",j,szPass);
