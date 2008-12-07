@@ -1,5 +1,5 @@
 CC=g++
 LDFLAGS=-lssl -lcrypto
-all: mtpass mtdump
+all: mtpass
 clean:
-	rm -f mtpass mtdump core
+	rm -f mtpass core
