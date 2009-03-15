@@ -26,8 +26,9 @@ const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
 const int iFormatLineLength = 92;
 int iDebug = 0;
+int iBackup = 0;
 
-void debug(char *fmt, ...)
+void debug(const char *fmt, ...)
 {
     if (iDebug == 0)
 	return;
@@ -148,17 +149,20 @@ int main(int argc, char **argv)
 	return -1;
     }
 
-    if (strcmp(argv[1],"-d")==0)
+    if (strcmp(argv[1],"-b")==0)
+	iBackup = 1;
+
+    if (strcmp(argv[1+iBackup],"-d")==0)
 	iDebug = 1;
 
-    fd = open(argv[1+iDebug], O_RDONLY);
+    fd = open(argv[1+iDebug+iBackup], O_RDONLY);
     if (fd < 0)
     {
-	fprintf(stderr, "Error: could not open file: %s\n", argv[1+iDebug]);
+	fprintf(stderr, "Error: could not open file: %s\n", argv[1+iDebug+iBackup]);
 	return -2;
     }
     bytes = lseek(fd, 0, SEEK_END);
-    fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1+iDebug], bytes);
+    fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1+iDebug+iBackup], bytes);
     buff = new char[bytes];
     if (buff==NULL)
     {
@@ -168,11 +172,37 @@ int main(int argc, char **argv)
 
     cUserRecord *ptr=NULL;
     lseek(fd, 0, SEEK_SET);
+
     if (read(fd, buff, bytes) == bytes)
     {
-	for (i=0; i<bytes; i++)
+	printf("ostatni bajt = %X\n",buff[bytes-1]);
+	i=0;
+	if (iBackup==1)
+	{
+	    for (i=0; i<bytes; i++)
+	    {
+		if (buff[i] == 'u')
+		{
+		    if (buff[i+1]=='s' && buff[i+2]=='e' && buff[i+3]=='r' && buff[i+4]=='$')
+		    {
+			i+=48;
+			fprintf(stdout, "Found user.dat at offset 0x%.5x\n",i);
+			break;
+		    }
+		}
+		i++;
+	    }
+	    if (i == bytes+1)
+	    {
+		fprintf(stderr, "Error: not found user.dat in backup\n");
+		return -5;
+	    }
+	}
+
+	for (; i<bytes; i++)
 	{
 	    //searching for StartOfRecord
+	    if (i+2>=bytes) break;
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
 		ptr=new cUserRecord;
@@ -180,11 +210,17 @@ int main(int argc, char **argv)
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
+		if (i>=bytes) break;
 		ptr->SetDisableFlag(bool(buff[i]));
 		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
-		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09))) i++;
+		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09)))
+		{
+			i++;
+			if (i>=bytes) break;
+		}
 		i+=4;
+		if (i>=bytes) break;
 		debug("SORn: 0x%X\n", i);
 
 		//cout << (int)buff[i] << endl;
@@ -192,22 +228,31 @@ int main(int argc, char **argv)
 
 		//is there a comment?
 		i+=18;
+		if (i>=bytes) break;
 		if (buff[i-5]==0x03 && (buff[i]!=0x00)) //there is comment
 		{
+		    if ((i+1)+buff[i]>=bytes) break;
 		    char *tmp=new char[buff[i]+1];
-		    debug("SOC: 0x%X\n", i+1);
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
 		    ptr->SetComment(tmp);
+		    debug("SOC: 0x%X %s\n", i+1,tmp);
 		    //cout <<tmp<<endl;
 		    delete tmp;
 		    i+=buff[i];
 		}
 
 		//searching for StartOfPassword
-		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) )) i++;
+		if (i+4>=bytes) break;
+		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) ))
+		{
+			i++;
+			if (i>=bytes) break;
+		}
+
 		i+=5;
+		if (i>=bytes) break;
 		debug("SOP: 0x%X\n", i);
 
 		if (buff[i-1]!=0x00)
@@ -215,23 +260,32 @@ int main(int argc, char **argv)
 		    //copying pass
 		    ptr->SetPass(&buff[i]);
 
-		    i+=buff[MD5_DIGEST_LENGTH];
+		    i+=MD5_DIGEST_LENGTH;
+		    if (i>=bytes) break;
 		}
 
 		//searching for StartOfUsername
-		while (!((buff[i]==0x01) && (buff[i+3]==0x21))) i++;
+		if (i+3>=bytes) break;
+		while (!((buff[i]==0x01) && (buff[i+3]==0x21)))
+		{
+			i++;
+			if (i>=bytes) break;
+		}
 		i+=4;
-		debug("SOU: 0x%X\n", i);
+		if (i>=bytes) break;
 		if (buff[i]!=0x00)
 		{
+		    if ((i+1)+buff[i]>=bytes) break;
 		    char *tmp=new char[buff[i]+1];
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
 		    //terminating the string
 		    tmp[buff[i]]=0;
 		    //cout <<tmp<<endl;
 		    ptr->SetUserName(tmp);
+			debug("SOU: 0x%X %s\n", i, tmp);
 		    delete tmp;
 		    i+=buff[i];
+		    if (i>=bytes) break;
 		}
 
 		tabUser.push_back(*ptr);
@@ -248,7 +302,7 @@ int main(int argc, char **argv)
     else
     {
 	fprintf(stderr, "Error: can't read file\n");
-        return -4;
+	return -4;
     }
     close(fd);
 
