@@ -10,6 +10,8 @@
                        added decrypt keys and key prediction
     v0.3 [2008-12-08]: figured out xor key generation algorithm, so no more collecting keys
                        and all users passwords should be decrypted ok :)
+    v0.4 [2009-03-17]: a lot of fixes
+                       able to decrypt passwords from mikrotik backup files and full flash-dump files
 */
 
 #include <iostream>
@@ -21,13 +23,14 @@
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.3 - MikroTik RouterOS password recovery tool, (c) 2008 by manio";
+const char* szVerInfo = "mtpass v0.4 - MikroTik RouterOS password recovery tool, (c) 2008-2009 by manio";
 const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
 const int iFormatLineLength = 92;
 int iDebug = 0;
+int gRecNumber = 1;
 
-void debug(char *fmt, ...)
+void debug(const char *fmt, ...)
 {
     if (iDebug == 0)
 	return;
@@ -36,6 +39,19 @@ void debug(char *fmt, ...)
     va_start(ap, fmt);
     vfprintf(stdout, fmt, ap);
     va_end(ap);
+}
+
+void ASCIIonly(char *text)
+{
+    for (int i=0; i<strlen(text); i++)
+    {
+	if ((unsigned char)text[i]<32 || (unsigned char)text[i]>126)	//not printable ASCII
+	{
+	    //terminating the string
+	    text[i] = 0;
+	    break;
+	}
+    }
 }
 
 class cUserRecord
@@ -101,19 +117,28 @@ class cUserRecord
 	if (szUserName) delete []szUserName;
 	szUserName=new char[strlen(NewUserName)+1];
 	strcpy(szUserName, NewUserName);
+	ASCIIonly(szUserName);
+	if (strcmp(szUserName,"")==0)
+	{
+	    delete szUserName;
+	    szUserName=NULL;
+	}
     }
     void SetComment(char* NewComment)
     {
 	if (szComment) delete []szComment;
 	szComment=new char[strlen(NewComment)+1];
 	strcpy(szComment, NewComment);
+	ASCIIonly(szComment);
     }
     void DecryptAndShowRecord()
     {
+	if (szUserName==NULL)
+	    return;
 	static const char magic_string [] = "283i4jfkai3389";	// :)
 	unsigned char key[MD5_DIGEST_LENGTH];
 	char user_magic[200];
-	strcpy(user_magic, szUserName);
+	strncpy(user_magic, szUserName, 199-strlen(magic_string));
 	strcat(user_magic, magic_string);
 	MD5((unsigned char*)user_magic, strlen(user_magic), key);
 
@@ -126,8 +151,9 @@ class cUserRecord
 	    sprintf(szPass, "<BLANK PASSWORD>");
 	else for (int i=0; i<MD5_DIGEST_LENGTH; i++)
 	    szPass[i] = szPass[i] ^ key[i];	//decoding (xor)
+	ASCIIonly(szPass);
 
-	fprintf(stdout, szFormatData, iRecNumber, szUserName, szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
+	fprintf(stdout, szFormatData, gRecNumber++, szUserName, szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
 	fprintf(stdout, "\n");
     }
 };
@@ -168,23 +194,32 @@ int main(int argc, char **argv)
 
     cUserRecord *ptr=NULL;
     lseek(fd, 0, SEEK_SET);
+
     if (read(fd, buff, bytes) == bytes)
     {
 	for (i=0; i<bytes; i++)
 	{
 	    //searching for StartOfRecord
+	    if (i+2>=bytes) break;
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
 		ptr=new cUserRecord;
-		debug("Found user record at offset 0x%.5x\n",i);
+		debug("Probably user record at offset 0x%.5x\n",i);
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
+		if (i>=bytes) break;
 		ptr->SetDisableFlag(bool(buff[i]));
 		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
-		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09))) i++;
+		if (i+3>=bytes) break;
+		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09)))
+		{
+			i++;
+			if (i+3>=bytes) break;
+		}
 		i+=4;
+		if (i>=bytes) break;
 		debug("SORn: 0x%X\n", i);
 
 		//cout << (int)buff[i] << endl;
@@ -192,8 +227,10 @@ int main(int argc, char **argv)
 
 		//is there a comment?
 		i+=18;
+		if (i>=bytes) break;
 		if (buff[i-5]==0x03 && (buff[i]!=0x00)) //there is comment
 		{
+		    if ((i+1)+buff[i]>=bytes) break;
 		    debug("SOC: 0x%X\n", i+1);
 		    char *tmp=new char[buff[i]+1];
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
@@ -206,8 +243,15 @@ int main(int argc, char **argv)
 		}
 
 		//searching for StartOfPassword
-		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) )) i++;
+		if (i+4>=bytes) break;
+		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) ))
+		{
+			i++;
+			if (i+4>=bytes) break;
+		}
+
 		i+=5;
+		if (i>=bytes) break;
 		debug("SOP: 0x%X\n", i);
 
 		if (buff[i-1]!=0x00)
@@ -215,14 +259,22 @@ int main(int argc, char **argv)
 		    //copying pass
 		    ptr->SetPass(&buff[i]);
 
-		    i+=buff[MD5_DIGEST_LENGTH];
+		    i+=MD5_DIGEST_LENGTH;
 		}
 
 		//searching for StartOfUsername
-		while (!((buff[i]==0x01) && (buff[i+3]==0x21))) i++;
+		if (i+3>=bytes) break;
+		while (!((buff[i]==0x01) && (buff[i+3]==0x21)))
+		{
+			i++;
+			if (i+3>=bytes) break;
+		}
+
 		i+=4;
+		if (i>=bytes) break;
 		if (buff[i]!=0x00)
 		{
+		    if (i+buff[i]>=bytes) break;
 		    debug("SOU: 0x%X\n", i);
 		    char *tmp=new char[buff[i]+1];
 		    memcpy(tmp,(void*)&buff[i+1],buff[i]);
@@ -248,7 +300,7 @@ int main(int argc, char **argv)
     else
     {
 	fprintf(stderr, "Error: can't read file\n");
-        return -4;
+	return -4;
     }
     close(fd);
 
@@ -269,6 +321,8 @@ int main(int argc, char **argv)
     for (; iter1!=iter2; ++iter1)
 	iter1->DecryptAndShowRecord();
 
+    if (gRecNumber == 1)
+	fprintf(stdout, "Sorry - no passwords were found in the file\n");
     fprintf(stdout, "\n");
     return 0;
 }
