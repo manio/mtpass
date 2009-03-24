@@ -12,6 +12,7 @@
                        and all users passwords should be decrypted ok :)
     v0.4 [2009-03-17]: a lot of fixes
                        able to decrypt passwords from mikrotik backup files and full flash-dump files
+    v0.5 [2009-03-25]: fixed decrypting passwords longer then 16 chars
 */
 
 #include <iostream>
@@ -39,6 +40,7 @@ void debug(const char *fmt, ...)
     va_start(ap, fmt);
     vfprintf(stdout, fmt, ap);
     va_end(ap);
+    fflush(stdout);
 }
 
 void ASCIIonly(char *text)
@@ -59,25 +61,34 @@ class cUserRecord
   private:
     bool bDisabled;
     int iRecNumber;
-    char szPass[MD5_DIGEST_LENGTH+1];
+    int iPassLen;
+    char* szPass;
     char* szUserName;
     char* szComment;
     int iPrefKey;
   public:
     cUserRecord()
     {
+	iPassLen=0;
+	szPass=NULL;
 	szUserName=NULL;
 	szComment=NULL;
 	bDisabled=false;
 	iRecNumber=-1;
-	for (int i=0;i<sizeof(szPass);i++)
-	  szPass[i]=0;
     }
     cUserRecord(const cUserRecord &t)
     {
 	bDisabled=t.bDisabled;
 	iRecNumber=t.iRecNumber;
-	memcpy(szPass, t.szPass, sizeof(szPass));
+
+	if (t.szPass==NULL)
+	    szPass=NULL;
+	else
+	{
+	    szPass=new char[t.iPassLen];
+	    iPassLen = t.iPassLen;
+	    memcpy(szPass, t.szPass, t.iPassLen);
+	}
 
 	if (t.szUserName==NULL)
 	    szUserName=NULL;
@@ -97,12 +108,16 @@ class cUserRecord
     }
     ~cUserRecord()
     {
+	if (szPass) delete []szPass;
 	if (szUserName) delete []szUserName;
 	if (szComment) delete []szComment;
     }
-    void SetPass(char* pPass)
+    void SetPass(unsigned char* pPass)
     {
-	memcpy(szPass, pPass, sizeof(szPass));
+	iPassLen=pPass[0]+1;
+	szPass=new char[iPassLen];
+	memcpy(szPass, pPass+1, iPassLen-1);
+	szPass[iPassLen-1]=0;	//terminating
     }
     void SetDisableFlag(bool bFlag)
     {
@@ -142,25 +157,21 @@ class cUserRecord
 	strcat(user_magic, magic_string);
 	MD5((unsigned char*)user_magic, strlen(user_magic), key);
 
-	//checking if we have an empty pass:
-	int iSum = 0;
-	for (int i=0; i<MD5_DIGEST_LENGTH; i++)
-	    iSum += szPass[i];
+	if (szPass != NULL)
+	{
+	    for (int i=0; i<(iPassLen-1); i++)
+		szPass[i] = szPass[i] ^ key[i%MD5_DIGEST_LENGTH];	//decoding (xor)
+	    ASCIIonly(szPass);
+	}
 
-	if (iSum == 0)
-	    sprintf(szPass, "<BLANK PASSWORD>");
-	else for (int i=0; i<MD5_DIGEST_LENGTH; i++)
-	    szPass[i] = szPass[i] ^ key[i];	//decoding (xor)
-	ASCIIonly(szPass);
-
-	fprintf(stdout, szFormatData, gRecNumber++, szUserName, szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
+	fprintf(stdout, szFormatData, gRecNumber++, szUserName, szPass==NULL ? "<BLANK PASSWORD>" : szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
 	fprintf(stdout, "\n");
     }
 };
 
 int main(int argc, char **argv)
 {
-    char *buff;
+    unsigned char *buff;
     int fd;
     list<cUserRecord> tabUser;
 
@@ -185,7 +196,7 @@ int main(int argc, char **argv)
     }
     bytes = lseek(fd, 0, SEEK_END);
     fprintf(stdout, "Reading file %s, %d bytes long\n", argv[1+iDebug], bytes);
-    buff = new char[bytes];
+    buff = new unsigned char[bytes];
     if (buff==NULL)
     {
 	fprintf(stderr, "Error: cannot allocate buffer\n");
@@ -203,8 +214,8 @@ int main(int argc, char **argv)
 	    if (i+2>=bytes) break;
 	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
 	    {
-		ptr=new cUserRecord;
 		debug("Probably user record at offset 0x%.5x\n",i);
+		ptr=new cUserRecord;
 
 		//5 bytes ahead is enable/disable flag
 		i+=5;
@@ -244,7 +255,7 @@ int main(int argc, char **argv)
 
 		//searching for StartOfPassword
 		if (i+4>=bytes) break;
-		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4]==0x10)||(buff[i+4]==0x00)) ))
+		while ( !((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)) )
 		{
 			i++;
 			if (i+4>=bytes) break;
@@ -257,9 +268,8 @@ int main(int argc, char **argv)
 		if (buff[i-1]!=0x00)
 		{
 		    //copying pass
-		    ptr->SetPass(&buff[i]);
-
-		    i+=MD5_DIGEST_LENGTH;
+		    ptr->SetPass(&buff[i-1]);
+		    i+=buff[i-1];
 		}
 
 		//searching for StartOfUsername
