@@ -164,7 +164,7 @@ class cUserRecord
 	    ASCIIonly(szPass);
 	}
 
-	fprintf(stdout, szFormatData, gRecNumber++, szUserName, szPass==NULL ? "<BLANK PASSWORD>" : szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
+	fprintf(stdout, szFormatData, gRecNumber, szUserName, szPass==NULL ? "<BLANK PASSWORD>" : szPass, bDisabled ? "USER DISABLED" : "", szComment==NULL ? "" : szComment);
 	fprintf(stdout, "\n");
     }
 };
@@ -238,8 +238,8 @@ int main(int argc, char **argv)
 
 		//is there a comment?
 		i+=18;
-		if (i>=bytes) break;
-		if (buff[i-5]==0x03 && (buff[i]!=0x00)) //there is comment
+		if ((i+4)>=bytes) break;
+		if ((!((buff[i+1]==0x11) && (buff[i+2]==0x20) && (buff[i+3]==0x20) && (buff[i+4]==0x21))) && (buff[i-5]==0x03 && (buff[i]!=0x00))) //there is comment
 		{
 		    if ((i+1)+buff[i]>=bytes) break;
 		    debug("SOC: 0x%X\n", i+1);
@@ -252,25 +252,27 @@ int main(int argc, char **argv)
 		    delete tmp;
 		    i+=buff[i];
 		}
+		else	//there is no comment
+		    i-=18;
 
 		//searching for StartOfPassword
-		if (i+4>=bytes) break;
-		while ( !((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)) )
+		if (i+8>=bytes) break;
+		while (!((buff[i]==0x11) && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)))
 		{
 			i++;
-			if (i+4>=bytes) break;
+			if (i+8>=bytes) break;
 		}
 
 		i+=5;
 		if (i>=bytes) break;
 		debug("SOP: 0x%X\n", i);
 
-		if (buff[i-1]!=0x00)
+		if ((buff[i-1]!=0x00) && !((buff[i]==0x01) && ((buff[i+1]==0x20 && buff[i+2]==0x20)||(buff[i+1]==0x00 && buff[i+2]==0x00)) && (buff[i+3]==0x21)))
 		{
 		    //copying pass
 		    ptr->SetPass(&buff[i-1]);
 		    i+=buff[i-1];
-		}
+		};
 
 		//searching for StartOfUsername
 		if (i+3>=bytes) break;
