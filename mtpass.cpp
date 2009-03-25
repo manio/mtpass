@@ -238,8 +238,8 @@ int main(int argc, char **argv)
 
 		//is there a comment?
 		i+=18;
-		if ((i+4)>=bytes) break;
-		if ((!((buff[i+1]==0x11) && (buff[i+2]==0x20) && (buff[i+3]==0x20) && (buff[i+4]==0x21))) && (buff[i-5]==0x03 && (buff[i]!=0x00))) //there is comment
+		if (i>=bytes) break;
+		if (/*(!((buff[i+1]==0x11) && (buff[i+2]==0x20) && (buff[i+3]==0x20) && (buff[i+4]==0x21))) && */(buff[i-5]==0x03 && (buff[i]!=0x00))) //there is comment
 		{
 		    if ((i+1)+buff[i]>=bytes) break;
 		    debug("SOC: 0x%X\n", i+1);
@@ -252,12 +252,12 @@ int main(int argc, char **argv)
 		    delete tmp;
 		    i+=buff[i];
 		}
-		else	//there is no comment
-		    i-=18;
+//		else	//there is no comment
+//		    i-=17;
 
 		//searching for StartOfPassword
 		if (i+8>=bytes) break;
-		while (!((buff[i]==0x11) && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)))
+		while (!((buff[i]==0x11) && buff[i+3]==0x21 && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)))
 		{
 			i++;
 			if (i+8>=bytes) break;
@@ -267,7 +267,7 @@ int main(int argc, char **argv)
 		if (i>=bytes) break;
 		debug("SOP: 0x%X\n", i);
 
-		if ((buff[i-1]!=0x00) && !((buff[i]==0x01) && ((buff[i+1]==0x20 && buff[i+2]==0x20)||(buff[i+1]==0x00 && buff[i+2]==0x00)) && (buff[i+3]==0x21)))
+		if ((buff[i-1]!=0x00)/* && !((buff[i]==0x01) && ((buff[i+1]==0x20 && buff[i+2]==0x20)||(buff[i+1]==0x00 && buff[i+2]==0x00)) && (buff[i+3]==0x21))*/)
 		{
 		    //copying pass
 		    ptr->SetPass(&buff[i-1]);
