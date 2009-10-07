@@ -12,7 +12,7 @@
                        and all users passwords should be decrypted ok :)
     v0.4 [2009-03-17]: a lot of fixes
                        able to decrypt passwords from mikrotik backup files and full flash-dump files
-    v0.5 [2009-03-25]: fixed decrypting passwords longer then 16 chars
+    v0.5 [2009-03-26]: fixed decrypting passwords longer then 16 chars
 */
 
 #include <iostream>
@@ -24,7 +24,8 @@
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.4 - MikroTik RouterOS password recovery tool, (c) 2008-2009 by manio";
+const char* szVerInfo = "mtpass v0.5 - MikroTik RouterOS password recovery tool, (c) 2008-2009 by manio";
+const char* szURLInfo = "http://manio.skyboo.net/mikrotik/";
 const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
 const int iFormatLineLength = 92;
@@ -177,7 +178,7 @@ int main(int argc, char **argv)
 
     int i, bytes, iKeys;
 
-    fprintf(stdout, "%s\n\n", szVerInfo);
+    fprintf(stdout, "%s\n%s\n\n", szVerInfo, szURLInfo);
     if (argc <= 1)
     {
 	fprintf(stdout, "usage: %s [-d] input_file\n", argv[0]);
@@ -256,15 +257,15 @@ int main(int argc, char **argv)
 		    i-=18;
 
 		//searching for StartOfPassword
-		if (i+8>=bytes) break;
+		if (i+4>=bytes) break;
 		while (!((buff[i]==0x11) && (buff[i+3]==0x21) && ((buff[i+4] % MD5_DIGEST_LENGTH)==0)))
 		{
 			i++;
-			if (i+8>=bytes) break;
+			if (i+4>=bytes) break;
 		}
 
 		i+=5;
-		if (i>=bytes) break;
+		if ((i+3)>=bytes) break;
 		debug("SOP: 0x%X\n", i);
 
 		if ((buff[i-1]!=0x00) && !((buff[i]==0x01) && ((buff[i+1]==0x20 && buff[i+2]==0x20)||(buff[i+1]==0x00 && buff[i+2]==0x00)) && (buff[i+3]==0x21)))
@@ -272,7 +273,7 @@ int main(int argc, char **argv)
 		    //copying pass
 		    ptr->SetPass(&buff[i-1]);
 		    i+=buff[i-1];
-		};
+		}
 
 		//searching for StartOfUsername
 		if (i+3>=bytes) break;
