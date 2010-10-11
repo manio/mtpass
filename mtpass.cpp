@@ -13,9 +13,11 @@
     v0.4 [2009-03-17]: a lot of fixes
                        able to decrypt passwords from mikrotik backup files and full flash-dump files
     v0.5 [2009-03-26]: fixed decrypting passwords longer then 16 chars
+    v0.6 [2010-10-12]: fixed compilation problems with newer g++
 */
 
 #include <iostream>
+#include <cstdio>
 #include <list>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -24,7 +26,7 @@
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.5 - MikroTik RouterOS password recovery tool, (c) 2008-2009 by manio";
+const char* szVerInfo = "mtpass v0.6 - MikroTik RouterOS password recovery tool, (c) 2008-2010 by manio";
 const char* szURLInfo = "http://manio.skyboo.net/mikrotik/";
 const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
