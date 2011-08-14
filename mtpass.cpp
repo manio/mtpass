@@ -14,6 +14,7 @@
                        able to decrypt passwords from mikrotik backup files and full flash-dump files
     v0.5 [2009-03-26]: fixed decrypting passwords longer then 16 chars
     v0.6 [2010-10-12]: fixed compilation problems with newer g++
+    v0.7 [2011-08-15]: kocour_easy: fix for decoding files from RouterOS 5.5
 */
 
 #include <iostream>
@@ -26,7 +27,7 @@
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.6 - MikroTik RouterOS password recovery tool, (c) 2008-2010 by manio";
+const char* szVerInfo = "mtpass v0.7 - MikroTik RouterOS password recovery tool, (c) 2008-2011 by manio";
 const char* szURLInfo = "http://manio.skyboo.net/mikrotik/";
 const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
@@ -227,7 +228,7 @@ int main(int argc, char **argv)
 		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
 		if (i+3>=bytes) break;
-		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09)))
+		while (!( (buff[i]==0x01) && ((buff[i+1]==0x00)||(buff[i+1]==0x20)) && (buff[i+3]==0x09||buff[i+3]==0x20)))
 		{
 			i++;
 			if (i+3>=bytes) break;
