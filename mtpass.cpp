@@ -216,7 +216,7 @@ int main(int argc, char **argv)
 	{
 	    //searching for StartOfRecord
 	    if (i+2>=bytes) break;
-	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a))
+	    if ((buff[i]==0x4d) && (buff[i+1]==0x32) && (buff[i+2]==0x0a || buff[i+2]==0x10))
 	    {
 		debug("Probably user record at offset 0x%.5x\n",i);
 		ptr=new cUserRecord;
