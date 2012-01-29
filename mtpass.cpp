@@ -221,10 +221,11 @@ int main(int argc, char **argv)
 		debug("Probably user record at offset 0x%.5x\n",i);
 		ptr=new cUserRecord;
 
-		//5 bytes ahead is enable/disable flag
-		i+=5;
+		//some bytes ahead is enable/disable flag
+		i += (buff[i+2] - 5);
 		if (i>=bytes) break;
-		ptr->SetDisableFlag(bool(buff[i]));
+		if (buff[i-1] == 0xfe)
+			ptr->SetDisableFlag(bool(buff[i]));
 		//cout << (int)buff[i] << endl;
 		//searching for StartOfRecNumber
 		if (i+3>=bytes) break;
