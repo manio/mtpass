@@ -15,6 +15,7 @@
     v0.5 [2009-03-26]: fixed decrypting passwords longer then 16 chars
     v0.6 [2010-10-12]: fixed compilation problems with newer g++
     v0.7 [2011-08-15]: kocour_easy: fix for decoding files from RouterOS 5.5
+    v0.8 [2012-01-29]: another fixes for decoding new RouterOS files (thanks to NetworkPro)
 */
 
 #include <iostream>
@@ -27,7 +28,7 @@
 
 using namespace std;
 
-const char* szVerInfo = "mtpass v0.7 - MikroTik RouterOS password recovery tool, (c) 2008-2011 by manio";
+const char* szVerInfo = "mtpass v0.8 - MikroTik RouterOS password recovery tool, (c) 2008-2012 by manio";
 const char* szURLInfo = "http://manio.skyboo.net/mikrotik/";
 const char* szFormatHdr = "%-4s | %-15s | %-18s | %-14s | %-35s";
 const char* szFormatData = "%-4d | %-15s | %-18s | %-14s | %-35s";
