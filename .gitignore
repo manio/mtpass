@@ -8,3 +8,10 @@ configure
 depcomp
 install-sh
 missing
+.deps/
+Makefile
+config.h
+config.log
+config.status
+mtpass.o
+stamp-h1
